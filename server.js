@@ -22,7 +22,13 @@ const PORT = process.env.PORT || 3000;
 const SCROLLBACK_MAX = 50000;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.webmanifest')) {
+      res.setHeader('Content-Type', 'application/manifest+json');
+    }
+  },
+}));
 
 // ── Session state ──────────────────────────────────────────────────────────────
 
@@ -116,6 +122,14 @@ function spawnSession(cli, cwd, options = {}) {
   const ptyEnv = { ...process.env, TERM: 'xterm-256color' };
   delete ptyEnv.CLAUDECODE;
   delete ptyEnv.CLAUDE_CODE_ENTRYPOINT;
+  // Ensure user-local bin dirs are in PATH (server may start with a stripped PATH)
+  const home = os.homedir();
+  const extraPaths = [
+    path.join(home, '.local', 'bin'),
+    path.join(home, '.nvm', 'versions', 'node', 'v24.12.0', 'bin'),
+    '/usr/local/bin',
+  ].filter(p => !ptyEnv.PATH.includes(p));
+  if (extraPaths.length) ptyEnv.PATH = extraPaths.join(':') + ':' + ptyEnv.PATH;
   if (monochrome) {
     ptyEnv.NO_COLOR = '1';
     delete ptyEnv.FORCE_COLOR;
@@ -164,6 +178,13 @@ function attachSession(sessionName) {
   const ptyEnv = { ...process.env, TERM: 'xterm-256color' };
   delete ptyEnv.CLAUDECODE;
   delete ptyEnv.CLAUDE_CODE_ENTRYPOINT;
+  const home = os.homedir();
+  const extraPaths = [
+    path.join(home, '.local', 'bin'),
+    path.join(home, '.nvm', 'versions', 'node', 'v24.12.0', 'bin'),
+    '/usr/local/bin',
+  ].filter(p => !ptyEnv.PATH.includes(p));
+  if (extraPaths.length) ptyEnv.PATH = extraPaths.join(':') + ':' + ptyEnv.PATH;
 
   const proc = pty.spawn('tmux', [
     'attach-session', '-t', sessionName,

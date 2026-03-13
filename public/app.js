@@ -1184,3 +1184,7 @@ $('lm-extra-args').addEventListener('change', e => {
 })();
 
 connect();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
