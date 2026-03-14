@@ -244,6 +244,7 @@ const term = new Terminal({
   scrollback:        5000,
   scrollSensitivity: 5,
   allowProposedApi:  true,
+  copyOnSelect:      true,
   theme:             initialTheme,
 });
 
@@ -251,6 +252,69 @@ term.loadAddon(fitAddon);
 term.loadAddon(webLinks);
 term.open($('terminal-container'));
 term.loadAddon(new WebglAddon.WebglAddon());
+
+// ── Clipboard: copy / paste ─────────────────────────────────────────────────────
+// Ctrl+Shift+C (or Cmd+Shift+C) → copy selection
+// Ctrl+Shift+V (or Cmd+Shift+V) → paste from clipboard
+term.attachCustomKeyEventHandler(e => {
+  if (e.type !== 'keydown') return true;
+
+  const copy = (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C';
+  const paste = (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V';
+
+  if (copy) {
+    const sel = term.getSelection();
+    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    return false;
+  }
+  if (paste) {
+    navigator.clipboard.readText().then(text => {
+      if (text && state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(text);
+    }).catch(() => {});
+    return false;
+  }
+  return true;
+});
+
+// Right-click context menu on terminal
+(function () {
+  const menu = document.createElement('div');
+  menu.id = 'clip-ctx-menu';
+  document.body.appendChild(menu);
+
+  function hide() { menu.style.display = 'none'; }
+
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy';
+  copyBtn.addEventListener('click', () => {
+    const sel = term.getSelection();
+    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    hide();
+  });
+
+  const pasteBtn = document.createElement('button');
+  pasteBtn.textContent = 'Paste';
+  pasteBtn.addEventListener('click', () => {
+    navigator.clipboard.readText().then(text => {
+      if (text && state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(text);
+    }).catch(() => {});
+    hide();
+  });
+
+  menu.appendChild(copyBtn);
+  menu.appendChild(pasteBtn);
+
+  .addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const hasSel = !!term.getSelection();
+    copyBtn.style.display = hasSel ? '' : 'none';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top  = e.clientY + 'px';
+    menu.style.display = 'block';
+    setTimeout(() => document.addEventListener('click', hide, { once: true }), 0);
+  });
+})();
+
 
 function applyFontSize(size) {
   const s = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, size));
@@ -930,6 +994,19 @@ function submitCompose() {
   composeTextarea.value = '';
   closeCompose();
 }
+
+// Mobile paste button
+$('tb-paste').addEventListener('pointerdown', async e => {
+  e.preventDefault();
+  if (navigator.vibrate) navigator.vibrate(8);
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text && state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(text);
+  } catch (_) {
+    // Clipboard read failed (permission denied) — fall back to compose
+    openCompose();
+  }
+});
 
 tbCompose.addEventListener('pointerdown', e => {
   e.preventDefault();
