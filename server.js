@@ -22,6 +22,18 @@ const PORT = process.env.PORT || 3000;
 const SCROLLBACK_MAX = 50000;
 
 app.use(express.json());
+
+// CF Access auth — reject requests not coming through Cloudflare Access
+// Allows localhost (health checks, service worker) to bypass
+app.use((req, res, next) => {
+  const ip = req.socket.remoteAddress || '';
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip.startsWith('::ffff:127.');
+  if (isLocal) return next();
+  const email = req.headers['cf-access-authenticated-user-email'];
+  if (!email) return res.status(403).json({ error: 'Forbidden' });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.webmanifest')) {
