@@ -1217,3 +1217,77 @@ html, body {
   flex-shrink: 0;
 }
 #tb-paste:active { background: var(--ui-active-bg); }
+
+/* ── URL Detector Overlay ── */
+#url-detect-overlay {
+  display: none;
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  background: var(--launch-bg, #fff);
+  border: 1px solid var(--launch-accent, #D97757);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+  padding: 14px 16px 12px;
+  max-width: min(480px, calc(100vw - 32px));
+  width: 100%;
+}
+#url-detect-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: var(--launch-text2, #888);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+#url-detect-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--launch-accent, #D97757);
+  margin-bottom: 6px;
+}
+#url-detect-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--launch-text, #1A1A1A);
+  word-break: break-all;
+  line-height: 1.5;
+  max-height: 80px;
+  overflow-y: auto;
+  background: var(--launch-bg2, #EBEBEB);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 10px;
+  user-select: all;
+}
+#url-detect-btns {
+  display: flex;
+  gap: 8px;
+}
+#url-detect-btns button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  transition: opacity 0.15s;
+}
+#url-detect-btns button:first-child {
+  background: var(--launch-accent, #D97757);
+  color: #fff;
+}
+#url-detect-btns button:last-child {
+  background: var(--launch-bg2, #EBEBEB);
+  color: var(--launch-text, #1A1A1A);
+}
+#url-detect-btns button:hover { opacity: 0.85; }

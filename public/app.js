@@ -316,6 +316,97 @@ term.attachCustomKeyEventHandler(e => {
 })();
 
 
+
+// ── URL Detector Overlay ────────────────────────────────────────────────────────
+// Scans incoming terminal data for https:// URLs and shows a copyable banner.
+// Solves the problem of OAuth URLs that wrap across terminal lines.
+(function () {
+  const URL_RE = /https?:\/\/[^\s -"'<>\[\]{}|^`\]{10,}/g;
+  const _dec = new TextDecoder('utf-8', { fatal: false });
+  let _buf = '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'url-detect-overlay';
+  document.body.appendChild(overlay);
+
+  function showUrl(url) {
+    overlay.innerHTML = '';
+
+    const label = document.createElement('div');
+    label.id = 'url-detect-label';
+    label.textContent = 'URL detected';
+
+    const urlText = document.createElement('div');
+    urlText.id = 'url-detect-text';
+    urlText.textContent = url;
+
+    const btns = document.createElement('div');
+    btns.id = 'url-detect-btns';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(url).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      }).catch(() => {});
+    });
+
+    const openBtn = document.createElement('button');
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', () => window.open(url, '_blank'));
+
+    const closeBtn = document.createElement('button');
+    closeBtn.id = 'url-detect-close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => { overlay.style.display = 'none'; });
+
+    btns.appendChild(copyBtn);
+    btns.appendChild(openBtn);
+    overlay.appendChild(closeBtn);
+    overlay.appendChild(label);
+    overlay.appendChild(urlText);
+    overlay.appendChild(btns);
+    overlay.style.display = 'block';
+
+    // Auto-dismiss after 90 seconds
+    clearTimeout(overlay._timer);
+    overlay._timer = setTimeout(() => { overlay.style.display = 'none'; }, 90000);
+  }
+
+  // Intercept incoming WebSocket data before writing to terminal
+  const _origOnMessage = null;
+  function scanForUrls(raw) {
+    const text = raw instanceof ArrayBuffer
+      ? _dec.decode(new Uint8Array(raw))
+      : (typeof raw === 'string' ? raw : '');
+
+    // Strip ANSI escape sequences for URL matching
+    const clean = text.replace(/\[[0-9;]*[mGKHFABCDJ]/g, '').replace(/\][^]*/g, '');
+    _buf = (_buf + clean).slice(-2048); // keep rolling 2KB buffer
+
+    const matches = [..._buf.matchAll(URL_RE)];
+    if (matches.length) {
+      const url = matches[matches.length - 1][0].replace(/[.,;:]+$/, '');
+      if (url.length > 20) showUrl(url);
+    }
+  }
+
+  // Hook into the WebSocket message handler
+  const _origConnect = window._connectHook;
+  const origAddEventListener = WebSocket.prototype.addEventListener;
+  WebSocket.prototype.addEventListener = function(type, handler, opts) {
+    if (type === 'message') {
+      const wrapped = function(evt) {
+        try { scanForUrls(evt.data); } catch (_) {}
+        return handler.call(this, evt);
+      };
+      return origAddEventListener.call(this, type, wrapped, opts);
+    }
+    return origAddEventListener.call(this, type, handler, opts);
+  };
+})();
+
 function applyFontSize(size) {
   const s = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, size));
   term.options.fontSize = s;

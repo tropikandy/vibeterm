@@ -27,6 +27,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
     if (filePath.endsWith('.webmanifest')) {
       res.setHeader('Content-Type', 'application/manifest+json');
     }
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
   },
 }));
 
