@@ -61,6 +61,16 @@ function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+function loadRecentDirs() {
+  try { return JSON.parse(localStorage.getItem(RECENT_DIRS_KEY) || '[]'); } catch { return []; }
+}
+function saveRecentDir(p) {
+  if (!p || p === '/') return;
+  const dirs = loadRecentDirs().filter(d => d !== p);
+  dirs.unshift(p);
+  localStorage.setItem(RECENT_DIRS_KEY, JSON.stringify(dirs.slice(0, 8)));
+}
+
 // ── Theme registry ─────────────────────────────────────────────────────────────
 // Single source of truth: add a new theme here and nowhere else.
 // vars: CSS custom property overrides applied to :root (empty = use stylesheet defaults).
@@ -172,6 +182,9 @@ function applyTheme(name) {
   Object.entries(theme.vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
   // Apply xterm terminal theme (fall back to default's terminal)
   term.options.theme = theme.terminal ?? THEMES.default.terminal;
+  // Sync PWA theme-color
+  const _tcMeta = document.querySelector('meta[name="theme-color"]');
+  if (_tcMeta) _tcMeta.setAttribute('content', name === 'default' ? '#F5F5F5' : '#111111');
 }
 
 function syncCliThemes() {
@@ -202,6 +215,9 @@ function syncSettingsUI() {
 // ── Font size ──────────────────────────────────────────────────────────────────
 const FONT_SIZE_MIN = 10, FONT_SIZE_MAX = 20;
 const FONT_SIZE_KEY = 'vibeterm-fontSize';
+const LAST_PATH_KEY = 'vibeterm-lastPath';
+const RECENT_DIRS_KEY = 'vibeterm-recentDirs';
+const COMPOSE_HISTORY_KEY = 'vibeterm-composeHistory';
 
 function loadFontSize() {
   const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10);
@@ -252,6 +268,67 @@ term.loadAddon(fitAddon);
 term.loadAddon(webLinks);
 term.open($('terminal-container'));
 try { term.loadAddon(new WebglAddon.WebglAddon()); } catch (_) { /* WebGL unavailable — falls back to canvas renderer */ }
+
+// ── Scroll-lock indicator ─────────────────────────────────────────────────────
+const scrollLockBtn = $('scroll-lock-btn');
+function updateScrollLock() {
+  const buf = term.buffer.active;
+  const atBottom = buf.viewportY >= buf.length - term.rows;
+  if (scrollLockBtn) scrollLockBtn.hidden = atBottom;
+}
+term.onScroll(updateScrollLock);
+if (scrollLockBtn) scrollLockBtn.addEventListener('click', () => {
+  term.scrollToBottom();
+  scrollLockBtn.hidden = true;
+});
+
+// ── Pinch-to-zoom font size ───────────────────────────────────────────────────
+let _pinchDist0 = 0, _pinchSize0 = 0;
+$('terminal-container').addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    _pinchDist0 = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY);
+    _pinchSize0 = term.options.fontSize;
+    e.preventDefault();
+  }
+}, { passive: false });
+$('terminal-container').addEventListener('touchmove', e => {
+  if (e.touches.length === 2 && _pinchDist0 > 0) {
+    const d = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY);
+    const sz = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(_pinchSize0 * d / _pinchDist0)));
+    if (sz !== term.options.fontSize) {
+      term.options.fontSize = sz;
+      localStorage.setItem(FONT_SIZE_KEY, sz);
+      fitAddon.fit();
+    }
+    e.preventDefault();
+  }
+}, { passive: false });
+$('terminal-container').addEventListener('touchend', e => {
+  if (e.touches.length < 2) _pinchDist0 = 0;
+}, { passive: true });
+
+// ── Swipe-right from left edge to detach ─────────────────────────────────────
+let _swipeX0 = 0, _swipeY0 = 0, _swipeArmed = false;
+$('terminal-container').addEventListener('touchstart', e => {
+  if (e.touches.length === 1 && e.touches[0].clientX < 40) {
+    _swipeX0 = e.touches[0].clientX;
+    _swipeY0 = e.touches[0].clientY;
+    _swipeArmed = true;
+  } else {
+    _swipeArmed = false;
+  }
+}, { passive: true });
+$('terminal-container').addEventListener('touchend', e => {
+  if (!_swipeArmed) return;
+  _swipeArmed = false;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - _swipeX0, dy = Math.abs(t.clientY - _swipeY0);
+  if (dx > 80 && dy < 60 && state.sessionActive) detachBtn.click();
+}, { passive: true });
 
 // ── Clipboard: copy / paste ─────────────────────────────────────────────────────
 // Ctrl+Shift+C (or Cmd+Shift+C) → copy selection
@@ -525,16 +602,6 @@ function forceReconnect() {
 }
 
 async function connect() {
-  if (state.hasConnectedOnce) {
-    try {
-      await fetch(`/api/session?_=${Date.now()}`, { cache: 'no-store' });
-      return location.reload();
-    } catch (_) {
-      scheduleReconnect();
-      return;
-    }
-  }
-
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${proto}//${location.host}/?_=${Date.now()}`);
   state.ws = ws;
@@ -659,7 +726,7 @@ function updateHeaderForSession(sessionType, sessionName, cli) {
     setGeminiMode(cli === 'gemini');
   }
   detachBtn.style.display = '';
-  const label = sessionName ? sessionName.replace(/-(claude|gemini)$/, '') : (cli || 'tmux');
+  const label = sessionName ? sessionName.replace(/-(claude|gemini)$/, '').replace(/_/g, ' ') : (cli || 'tmux');
   document.title = 'clive · ' + label;
 }
 
@@ -785,7 +852,7 @@ async function loadSessions() {
     });
     frag.appendChild(card);
   }
-  browserList.innerHTML = '';
+  if (!_recDirs.length || data.parent) browserList.innerHTML = '';
   browserList.appendChild(frag);
 }
 
@@ -808,8 +875,43 @@ async function browse(dirPath) {
   }
   state.browsePath = data.path;
   state.browseRoot = data.browseRoot || null;
+  localStorage.setItem(LAST_PATH_KEY, data.path);
+  saveRecentDir(data.path);
   renderBreadcrumb(data.path, state.browseRoot);
+  // Async git status badge
+  const _oldGit = document.getElementById('git-status-badge');
+  if (_oldGit) _oldGit.remove();
+  fetch(`/api/git-status?path=${encodeURIComponent(data.path)}`)
+    .then(r => r.json())
+    .then(gs => {
+      if (!gs || !gs.git) return;
+      const b = document.createElement('span');
+      b.id = 'git-status-badge';
+      b.className = 'git-status-badge';
+      b.textContent = gs.branch + (gs.dirty ? ' \u270e' : '');
+      pathRow.appendChild(b);
+    }).catch(() => {});
 
+  // Recent dirs quick-access (only at top level or when list is short)
+  const _recDirs = loadRecentDirs().filter(d => d !== data.path);
+  if (_recDirs.length > 0 && !data.parent) {
+    const recSection = document.createElement('div');
+    recSection.className = 'recent-dirs-section';
+    const recLabel = document.createElement('div');
+    recLabel.className = 'recent-dirs-label';
+    recLabel.textContent = 'Recent';
+    recSection.appendChild(recLabel);
+    _recDirs.slice(0, 5).forEach(d => {
+      const btn = document.createElement('button');
+      btn.className = 'recent-dir-btn';
+      btn.textContent = d.split('/').filter(Boolean).pop() || d;
+      btn.title = d;
+      btn.addEventListener('click', () => browse(d));
+      recSection.appendChild(btn);
+    });
+    browserList.innerHTML = '';
+    browserList.appendChild(recSection);
+  }
   const frag = document.createDocumentFragment();
   if (data.parent) frag.appendChild(makeEntryRow('parent', '..', data.parent, null));
   for (const e of data.entries) {
@@ -1030,6 +1132,11 @@ const composeSend     = $('compose-send');
 const composeCancel   = $('compose-cancel');
 const tbCompose       = $('tb-compose');
 
+let composeHistory = (() => {
+  try { return JSON.parse(localStorage.getItem(COMPOSE_HISTORY_KEY) || '[]'); } catch { return []; }
+})();
+let composeHistoryIdx = -1;
+
 function autoResizeTextarea() {
   const vv = window.visualViewport;
   const availH = (vv ? vv.height : window.innerHeight) - 60;
@@ -1081,6 +1188,12 @@ function closeCompose() {
 function submitCompose() {
   const text = composeTextarea.value.trimEnd();
   if (text && state.ws && state.ws.readyState === WebSocket.OPEN) {
+    if (text) {
+      composeHistory = composeHistory.filter(x => x !== text);
+      composeHistory.push(text);
+      localStorage.setItem(COMPOSE_HISTORY_KEY, JSON.stringify(composeHistory.slice(-50)));
+      composeHistoryIdx = -1;
+    }
     state.ws.send(text);
     setTimeout(() => {
       if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send('\r');
@@ -1120,6 +1233,25 @@ composeSend.addEventListener('pointerdown', e => {
 composeTextarea.addEventListener('input', autoResizeTextarea);
 
 composeTextarea.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (composeHistory.length) {
+      composeHistoryIdx = composeHistoryIdx < 0 ? composeHistory.length - 1 : Math.max(0, composeHistoryIdx - 1);
+      composeTextarea.value = composeHistory[composeHistoryIdx];
+      autoResizeTextarea();
+    }
+    return;
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (composeHistoryIdx >= 0) {
+      composeHistoryIdx++;
+      if (composeHistoryIdx >= composeHistory.length) { composeHistoryIdx = -1; composeTextarea.value = ''; }
+      else composeTextarea.value = composeHistory[composeHistoryIdx];
+      autoResizeTextarea();
+    }
+    return;
+  }
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     submitCompose();
@@ -1350,7 +1482,7 @@ $('lm-extra-args').addEventListener('change', e => {
 (async () => {
   const resp = await fetch('/api/session').catch(() => null);
   const session = resp ? await resp.json().catch(() => null) : null;
-  browse((session && session.cwd) ? session.cwd : '');
+  browse(localStorage.getItem(LAST_PATH_KEY) || (session && session.cwd) || '');
   mkdirBtn.style.display = '';
   cloneBtn.style.display = '';
 })();

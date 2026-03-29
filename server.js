@@ -45,6 +45,20 @@ app.use(express.static(path.join(__dirname, 'public'), {
   },
 }));
 
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "connect-src 'self' wss: ws:; " +
+    "img-src 'self' data:; " +
+    "worker-src 'self'"
+  );
+  next();
+});
+
 // ── Session state ──────────────────────────────────────────────────────────────
 
 let ptyProcess = null;
@@ -503,12 +517,27 @@ app.post('/api/session/kill', (req, res) => {
   if (proc) try { proc.kill(); } catch (_) {}
 });
 
+// ── Git status ────────────────────────────────────────────────────────────────
+app.get('/api/git-status', (req, res) => {
+  const rawPath = req.query.path || '';
+  const target = rawPath ? path.resolve(rawPath) : '/';
+  if (!withinBrowseRoot(target)) return res.status(403).json({ error: 'Forbidden' });
+  exec(`git -C "${target}" rev-parse --abbrev-ref HEAD 2>/dev/null`, (err, branch) => {
+    if (err || !branch.trim()) return res.json({ git: false });
+    exec(`git -C "${target}" status --porcelain 2>/dev/null`, (err2, status) => {
+      res.json({ git: true, branch: branch.trim(), dirty: status.trim().length > 0 });
+    });
+  });
+});
+
 // ── WebSocket server ───────────────────────────────────────────────────────────
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', ws => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   // 1. Send current state
   ws.send(JSON.stringify({
     type: 'state',
@@ -548,7 +577,10 @@ wss.on('connection', ws => {
 
 setInterval(() => {
   wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) client.ping();
+    if (client.readyState !== WebSocket.OPEN) return;
+    if (client.isAlive === false) { client.terminate(); return; }
+    client.isAlive = false;
+    client.ping();
   });
 }, 30000);
 
