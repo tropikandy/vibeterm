@@ -321,7 +321,7 @@ term.attachCustomKeyEventHandler(e => {
 // Scans incoming terminal data for https:// URLs and shows a copyable banner.
 // Solves the problem of OAuth URLs that wrap across terminal lines.
 (function () {
-  const URL_RE = /https?:\/\/[^\s -"'<>\[\]{}|^`\]{10,}/g;
+  const URL_RE = /https?:\/\/[^\s"'<>\[\]{}|^`\- ]{10,}/g;
   const _dec = new TextDecoder('utf-8', { fatal: false });
   let _buf = '';
 
