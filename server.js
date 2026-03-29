@@ -70,9 +70,15 @@ function appendScrollback(data) {
   const chunk = Buffer.from(filtered, 'binary');
   if (!chunk.length) return;
   const combined = Buffer.concat([scrollbackBuffer, chunk]);
-  scrollbackBuffer = combined.length > SCROLLBACK_MAX
-    ? combined.slice(combined.length - SCROLLBACK_MAX)
-    : combined;
+  if (combined.length > SCROLLBACK_MAX) {
+    let sliced = combined.slice(combined.length - SCROLLBACK_MAX);
+    // Skip UTF-8 continuation bytes at the cut boundary to avoid corrupt chars on replay
+    let i = 0;
+    while (i < sliced.length && (sliced[i] & 0xC0) === 0x80) i++;
+    scrollbackBuffer = i > 0 ? sliced.slice(i) : sliced;
+  } else {
+    scrollbackBuffer = combined;
+  }
 }
 
 function broadcast(data) {
@@ -141,7 +147,6 @@ function spawnSession(cli, cwd, options = {}) {
   const home = os.homedir();
   const extraPaths = [
     path.join(home, '.local', 'bin'),
-    path.join(home, '.nvm', 'versions', 'node', 'v24.12.0', 'bin'),
     '/usr/local/bin',
   ].filter(p => !ptyEnv.PATH.includes(p));
   if (extraPaths.length) ptyEnv.PATH = extraPaths.join(':') + ':' + ptyEnv.PATH;
@@ -196,7 +201,6 @@ function attachSession(sessionName) {
   const home = os.homedir();
   const extraPaths = [
     path.join(home, '.local', 'bin'),
-    path.join(home, '.nvm', 'versions', 'node', 'v24.12.0', 'bin'),
     '/usr/local/bin',
   ].filter(p => !ptyEnv.PATH.includes(p));
   if (extraPaths.length) ptyEnv.PATH = extraPaths.join(':') + ':' + ptyEnv.PATH;

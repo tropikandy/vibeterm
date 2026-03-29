@@ -251,7 +251,7 @@ const term = new Terminal({
 term.loadAddon(fitAddon);
 term.loadAddon(webLinks);
 term.open($('terminal-container'));
-term.loadAddon(new WebglAddon.WebglAddon());
+try { term.loadAddon(new WebglAddon.WebglAddon()); } catch (_) { /* WebGL unavailable — falls back to canvas renderer */ }
 
 // ── Clipboard: copy / paste ─────────────────────────────────────────────────────
 // Ctrl+Shift+C (or Cmd+Shift+C) → copy selection
@@ -304,7 +304,7 @@ term.attachCustomKeyEventHandler(e => {
   menu.appendChild(copyBtn);
   menu.appendChild(pasteBtn);
 
-  .addEventListener('contextmenu', e => {
+  $('terminal-container').addEventListener('contextmenu', e => {
     e.preventDefault();
     const hasSel = !!term.getSelection();
     copyBtn.style.display = hasSel ? '' : 'none';
@@ -659,6 +659,8 @@ function updateHeaderForSession(sessionType, sessionName, cli) {
     setGeminiMode(cli === 'gemini');
   }
   detachBtn.style.display = '';
+  const label = sessionName ? sessionName.replace(/-(claude|gemini)$/, '') : (cli || 'tmux');
+  document.title = 'clive · ' + label;
 }
 
 function resetHeader() {
@@ -669,6 +671,7 @@ function resetHeader() {
   }
   setGeminiMode(false);
   detachBtn.style.display = 'none';
+  document.title = 'clive';
 }
 
 // ── Tab Switcher ───────────────────────────────────────────────────────────────
@@ -768,11 +771,12 @@ async function loadSessions() {
           </svg>
         </div>
         <div class="session-info">
-          <span class="session-card-name">${session.name}</span>
+          <span class="session-card-name"></span>
           <span class="session-card-meta">${session.windows} window${session.windows !== 1 ? 's' : ''}</span>
         </div>
       </div>
     `;
+    card.querySelector('.session-card-name').textContent = session.name;
     card.addEventListener('click', () => {
       document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
@@ -879,7 +883,7 @@ function makeEntryRow(type, name, targetPath, mtime) {
 }
 
 function renderBreadcrumb(fullPath, browseRoot) {
-  const lock = browseRoot ? '🔒 ' : '';
+  const lock = browseRoot ? '[root] ' : '';
   pathDisplay.textContent = lock + '/' + fullPath.split('/').filter(Boolean).join('/');
 }
 
