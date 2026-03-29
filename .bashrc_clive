@@ -1,0 +1,59 @@
+# ~/.bashrc for Clive (ai-terminal)
+
+# Standard interactive check
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+# History
+HISTSIZE=5000
+HISTFILESIZE=10000
+HISTCONTROL=ignoredups:erasedups
+shopt -s histappend
+
+# Prompt: show current dir clearly
+PS1='\[\033[1;36m\]clive\[\033[0m\]:\[\033[1;33m\]\w\[\033[0m\]\$ '
+
+# Convenience aliases
+alias ll='ls -lah --color=auto'
+alias la='ls -A --color=auto'
+alias l='ls --color=auto'
+alias grep='grep --color=auto'
+
+# Host filesystem shortcuts (everything mounted at /host)
+alias stacks='cd /host/opt/stacks'
+alias dashboard='cd /host/opt/server-dashboard'
+alias logs='docker logs --tail 50 -f'
+
+# Docker shortcuts
+alias dps='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
+alias dlog='docker logs --tail 50 -f'
+
+# Rebuild dashboard
+rebuild-dashboard() {
+    echo "Building server-dashboard..."
+    cd /host/opt/server-dashboard && docker build -t server-dashboard:latest .
+    cd /host/opt/stacks/core && docker compose up -d --no-deps dashboard
+    echo "Done."
+}
+
+# ── Startup message ────────────────────────────────────────────────────────────
+echo ""
+echo "  ╔══════════════════════════════════════╗"
+echo "  ║  CLIVE  —  Suras home server shell   ║"
+echo "  ╚══════════════════════════════════════╝"
+echo ""
+echo "  Host:     79.76.50.122 (Oracle ARM64)"
+echo "  Stacks:   /host/opt/stacks/{core,apps,automation}"
+echo "  Dashboard:/host/opt/server-dashboard"
+echo ""
+CONTAINER_COUNT=$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')
+echo "  Containers running: ${CONTAINER_COUNT}"
+echo ""
+echo "  CLIs:  claude  (run 'claude auth login' once if not authed)"
+echo "         gemini  (OAuth via eandreaslarsson@gmail.com)"
+echo "         docker  (full socket access)"
+echo ""
+echo "  Aliases: stacks  dashboard  dps  dlog  rebuild-dashboard"
+echo ""
