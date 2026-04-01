@@ -726,6 +726,7 @@ function updateHeaderForSession(sessionType, sessionName, cli) {
     setGeminiMode(cli === 'gemini');
   }
   detachBtn.style.display = '';
+  killBtn.style.display = '';
   const label = sessionName ? sessionName.replace(/-(claude|gemini)$/, '').replace(/_/g, ' ') : (cli || 'tmux');
   document.title = 'clive · ' + label;
 }
@@ -738,6 +739,7 @@ function resetHeader() {
   }
   setGeminiMode(false);
   detachBtn.style.display = 'none';
+  killBtn.style.display = 'none';
   document.title = 'clive';
 }
 
