@@ -34,18 +34,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public'), {
-  setHeaders(res, filePath) {
-    if (filePath.endsWith('.webmanifest')) {
-      res.setHeader('Content-Type', 'application/manifest+json');
-    }
-    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    }
-  },
-}));
-
-// ── Security headers ──────────────────────────────────────────────────────────
+// ── Security headers ─────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy',
     "default-src 'self'; " +
@@ -58,6 +47,18 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.webmanifest')) {
+      res.setHeader('Content-Type', 'application/manifest+json');
+    }
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  },
+}));
+
 
 // ── Session state ──────────────────────────────────────────────────────────────
 
