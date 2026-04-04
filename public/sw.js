@@ -1,4 +1,4 @@
-const CACHE = 'clive-v1';
+const CACHE = 'clive-v2';
 const SHELL = ['/', '/app.js', '/style.css',
   'https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.css',
   'https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.js',
